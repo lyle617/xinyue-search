@@ -17,7 +17,7 @@ class QuarkPlugin
     public function __construct()
     {
         // 第三方转存接口地址
-        $this->url = "";
+        $this->url = "https://api.kuleu.com/api";
         $this->model = new SourceModel();
         $this->SourceLogModel = new SourceLogModel();
         $this->source_category_id = 0;
@@ -67,38 +67,33 @@ class QuarkPlugin
         
         $this->source_category_id = $source_category_id;
 
-        // 分页转存
-        $page_no = 1;
+        // 使用新的影视API接口
+        $apiUrl = $this->url . "/yingshi?quark";
+        $res = curlHelper($apiUrl, "GET", [])['body'];
+        $res = json_decode($res, true);
+
+        if ($res['code'] !== 1 || empty($res['data'])) {
+            return jerr('接口返回数据为空');
+        }
+
         $allData = [];
         $logId = '';
-
-        while (true) {
-            $searchData = [
-                'page_no' => $page_no,
-                'page_size' => 10000,
-                'type' => 2, //从旧到新排序  也就是先采集旧数据
-                'day' => $day,  //等2时 用于每日更新  默认0是全部数据
-                'category_id' => $this->source_category_id
+        
+        // 处理返回的数据
+        foreach ($res['data'] as $item) {
+            $allData[] = [
+                'title' => $item['name'],
+                'url' => $item['viewlink'],
+                'addtime' => $item['addtime'],
+                'source_category_id' => $this->source_category_id
             ];
-            $res = curlHelper($this->url . "/api/search", "POST", $searchData)['body'];
-            $res = json_decode($res, true);
+        }
 
-            if ($res['code'] !== 200 || empty($res['data']['items'])) {
-                break;
-            }
-
-            $dataList = $res['data'];
-            $allData = array_merge($allData, $dataList['items']);
-            $page_no++;
-
-            if ($logId == '') {
-                $name = $day == 2 ? '每日更新' : '全部转存';
-                $logId = $this->SourceLogModel->addLog($name, $dataList['total_result']);
-            }
-
-            if ($page_no > 1000) {
-                break;
-            }
+        if (count($allData) > 0) {
+            $name = $day == 2 ? '每日更新' : '全部转存';
+            $logId = $this->SourceLogModel->addLog($name, count($allData));
+        } else {
+            return jerr('接口返回数据为空');
         }
 
         foreach ($allData as $data) {
@@ -106,11 +101,14 @@ class QuarkPlugin
         }
 
         $this->SourceLogModel->editLog($logId, count($allData), '', '', 3);
+        
+        return jok('资源更新成功，共更新' . count($allData) . '条记录');
     }
 
     function processSingleData($value, $logId = 0, $total_result = 0, $isType = 0)
     {
-        $detail = $this->model->where('title', $value['title'])->where('is_type', determineIsType($value['url']))->find();
+        // 检查标题或URL是否已存在，避免重复
+        $detail = $this->model->where('title', $value['title'])->find();
         if (!empty($detail)) {
             if (!empty($logId)) {
                 $this->SourceLogModel->editLog($logId, $total_result, 'skip_num', '重复跳过转存');
@@ -144,13 +142,13 @@ class QuarkPlugin
             return;
         }
 
-        $title = empty($value['title']) ? preg_replace('/^\d+\./', '', $res['data']['title']) : $value['title'];
+        $title = $value['title'] ? $value['title'] : preg_replace('/^\d+\./', '', $res['data']['title']);
         $source_category_id = $value['source_category_id'] ?? $this->source_category_id;
 
         $data = [
             "title" => $title,
-            "url" => $res['data']['share_url'],
-            "is_type" => determineIsType($res['data']['share_url']),
+            "url" => $res['data']['share_url'] ?? $url,
+            "is_type" => determineIsType($res['data']['share_url'] ?? $url),
             "code" => $res['data']['code'] ?? $value['code'] ?? '',
             "source_category_id" => $source_category_id,
             "update_time" => time(),

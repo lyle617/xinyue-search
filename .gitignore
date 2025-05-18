@@ -5,3 +5,6 @@ nginx.htaccess
 .env
 /public/install/install.lock
 /extend/netdisk/pan/access_token.json
+.auto-coder/
+/actions/
+/output.txt

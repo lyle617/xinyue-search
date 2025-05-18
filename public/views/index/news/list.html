@@ -106,7 +106,17 @@
                     {else /}
                     <el-empty style="margin-top: 10%;" :image-size="200" image="{$config.search_bg??''}" description="{$config.search_tips|default='未找到，可换个关键词尝试哦~'}">
                         {if condition="$config.is_quan == 1"}
-                        <div class="vtips" onclick="switchSource(1)">请尝试切换&nbsp;“<a href="javascript:;">全网搜</a>”&nbsp;获取资源</div>
+                        <div class="vtips" onclick="switchSource(1)">请尝试切换&nbsp;"<a href="javascript:;">全网搜</a>"&nbsp;获取资源</div>
+                        <script>
+                            // 本地搜索无结果时，自动触发全网搜索
+                            document.addEventListener('DOMContentLoaded', function() {
+                                if (parseInt('{$config.is_quan}') === 1 && parseInt('{$config.auto_quan|default="0"}') === 1) {
+                                    setTimeout(function() {
+                                        switchSource(1);
+                                    }, 100);
+                                }
+                            });
+                        </script>
                         {/if}
                     </el-empty>
                     {/if}
@@ -249,6 +259,11 @@
             switchSource(1)
         }
         function switchSource(source) {
+            // 防止在同一模式下重复切换
+            if(app.currentSource == source && (source != 1 || (app.QLoading || app.QList.length > 0))) {
+                return;
+            }
+            
             app.currentSource = source;
             if(app.currentSource == 1){
                 if(app.QLoading || app.QList.length>0) return
